@@ -9,6 +9,10 @@
 A local [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes the **OutSystems LifeTime REST API v2** as conversational tools.  
 Connect it to Claude Desktop (or any MCP-compatible client) and manage deployments, users, teams and applications through natural language.
 
+> **Unofficial community project** — not affiliated with or endorsed by OutSystems.
+> It drives a powerful administrative API (it can create deployments, modify users, edit
+> database connections and more). **Read the [Security](#security) section before using it.**
+
 ---
 
 ## Tools provided
@@ -197,6 +201,59 @@ npm run build       # compile to dist/
 # Run directly with tsx (no compile step)
 LIFETIME_BASE_URL=... LIFETIME_API_TOKEN=... npm run dev
 ```
+
+---
+
+## Security
+
+This server wraps a **privileged administrative API**. A Service Account token grants
+broad control over your LifeTime infrastructure, and several tools perform **destructive
+or irreversible** actions — e.g. `create_deployment` / `execute_deployment_command`,
+`create_user` / `update_user`, `create_role` / `update_role` / `delete_role`,
+`update_db_connection`, `manage_team_users`, and `set_maintenance_mode`.
+
+Treat it accordingly:
+
+- **Least privilege.** Create a dedicated Service Account scoped to only the
+  environments and permissions you actually need. Don't reuse a personal admin token.
+- **Protect the token.** It's effectively a root credential. Keep it in `.env`
+  (gitignored) or your client's secret store — never commit it or paste it into shared
+  configs. Rotate it if exposed.
+- **Lock down HTTP mode.** The optional Streamable HTTP transport must run behind
+  `HTTP_BEARER_TOKEN`; never expose an unauthenticated endpoint to a network or tunnel.
+- **Prefer non-production first.** Point it at a Development/Test LifeTime before
+  trusting it against Production.
+- **Human-in-the-loop.** Keep your MCP client's tool-approval prompts on for write
+  operations rather than auto-approving everything.
+
+No credentials are logged, and the server only talks to the LifeTime URL you configure.
+
+---
+
+## Compatibility
+
+- **OutSystems 11 (O11)** self-managed / cloud, via the **LifeTime REST API v2**
+  (`/lifetimeapi/rest/v2`). Schemas were derived from the v2 Swagger spec in
+  [`reference/`](reference/).
+- **Not** for **OutSystems Developer Cloud (ODC)** — ODC has its own APIs and MCP
+  tooling (see below).
+- Requires **Node.js >= 18** (or Docker).
+
+---
+
+## Related projects
+
+The OutSystems MCP space is split between **ODC** (cloud) and **LifeTime / O11**
+(self-managed). Most tooling targets ODC; this project focuses on **LifeTime**.
+
+| Project | Target | Approach |
+|---|---|---|
+| **this project** | LifeTime / O11 | Official REST API v2 — full read/write, 66 tools |
+| [OutSystems/outsystems-mcp](https://github.com/OutSystems/outsystems-mcp) | ODC | Official remote MCP |
+| [rpgomes-code/outsystems-mcp-extended](https://github.com/rpgomes-code/outsystems-mcp-extended) | ODC | Community server wrapping ODC REST APIs |
+
+> Not to be confused with the unrelated Forge component also named *"MCP Server (O11)"*,
+> which turns an O11 app into an MCP endpoint rather than managing LifeTime.
 
 ---
 
