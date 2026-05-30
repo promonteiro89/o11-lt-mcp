@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code local state (personal permissions, launch config)
+.claude/
+
+# OS / editor cruft
+.DS_Store
+*.log
