@@ -1,5 +1,11 @@
 # OutSystems LifeTime MCP Server
 
+[![CI](https://github.com/promonteiro89/o11-lt-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/promonteiro89/o11-lt-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![MCP](https://img.shields.io/badge/MCP-server-000000)](https://modelcontextprotocol.io)
+
 A local [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes the **OutSystems LifeTime REST API v2** as conversational tools.  
 Connect it to Claude Desktop (or any MCP-compatible client) and manage deployments, users, teams and applications through natural language.
 
