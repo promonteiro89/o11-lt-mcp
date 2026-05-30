@@ -206,25 +206,38 @@ LIFETIME_BASE_URL=... LIFETIME_API_TOKEN=... npm run dev
 
 ## Security
 
-This server wraps a **privileged administrative API**. A Service Account token grants
-broad control over your LifeTime infrastructure, and several tools perform **destructive
-or irreversible** actions — e.g. `create_deployment` / `execute_deployment_command`,
-`create_user` / `update_user`, `create_role` / `update_role` / `delete_role`,
-`update_db_connection`, `manage_team_users`, and `set_maintenance_mode`.
+**The enforced boundary is the LifeTime Service Account, not the AI.** Per the
+[OutSystems docs](https://success.outsystems.com/Documentation/11_x_platform/Reference/OutSystems_APIs/LifeTime_API_v2/REST_API_Authentication),
+a Service Account "follows the same permission model of regular user accounts, using
+roles and teams," and **all API operations are limited to the permissions associated
+with that account, enforced by LifeTime server-side**. The server can never perform an
+operation the account isn't granted, and it cannot escalate its own access. Scope the
+account, and you've scoped the tool.
 
-Treat it accordingly:
-
-- **Least privilege.** Create a dedicated Service Account scoped to only the
-  environments and permissions you actually need. Don't reuse a personal admin token.
-- **Protect the token.** It's effectively a root credential. Keep it in `.env`
-  (gitignored) or your client's secret store — never commit it or paste it into shared
-  configs. Rotate it if exposed.
+- **Least privilege is the primary control.** Create a dedicated Service Account and
+  assign it a role scoped to exactly what you need — e.g. read-only, or only specific
+  environments (application/deployment permissions are per-environment; DB-connection
+  permissions are set at the environment level). Exclude user/role management if you
+  don't need it. Whatever the role can't do, the AI can't do.
+- **Audited & traceable.** Every REST call is audited and traceable to the Service
+  Account, viewable in its activity log in LifeTime. Nothing happens off the record.
+- **Revocable tokens.** Service Account tokens are time-bound (6/12/24 months) and can
+  be invalidated instantly. Treat the token as a credential: keep it in `.env`
+  (gitignored) or your client's secret store, never commit it, and rotate if exposed.
 - **Lock down HTTP mode.** The optional Streamable HTTP transport must run behind
   `HTTP_BEARER_TOKEN`; never expose an unauthenticated endpoint to a network or tunnel.
 - **Prefer non-production first.** Point it at a Development/Test LifeTime before
   trusting it against Production.
-- **Human-in-the-loop.** Keep your MCP client's tool-approval prompts on for write
-  operations rather than auto-approving everything.
+
+Several tools perform destructive or irreversible actions (e.g. `create_deployment` /
+`execute_deployment_command`, `create_user` / `update_user`, `delete_role`,
+`update_db_connection`, `set_maintenance_mode`) — the Service Account's role is what
+gates access to them.
+
+> **A note on "human in the loop":** most MCP clients prompt before running a tool, which
+> is a useful extra layer — but it's a *client-side* setting (auto-approve disables it),
+> not something this server enforces. Don't rely on it as your primary control; rely on
+> the Service Account's scoped permissions, which are enforced server-side and audited.
 
 No credentials are logged, and the server only talks to the LifeTime URL you configure.
 
