@@ -191,3 +191,15 @@ npm run build       # compile to dist/
 # Run directly with tsx (no compile step)
 LIFETIME_BASE_URL=... LIFETIME_API_TOKEN=... npm run dev
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow and how to add tools.
+
+---
+
+## License
+
+[MIT](LICENSE) © Paulo Ricardo Monteiro

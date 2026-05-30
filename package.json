@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "MCP server for the OutSystems LifeTime REST API v2 — manage deployments, users, teams and applications conversationally.",
   "main": "dist/index.js",
+  "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
