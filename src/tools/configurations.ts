@@ -11,10 +11,12 @@ export const configurationsTools: Tool[] = [
   {
     name: "get_application_configurations",
     description:
-      "Returns the configuration values (site properties, timer schedules, REST endpoints) " +
-      "for a given application across every environment where it is deployed. " +
-      "Useful for auditing per-environment settings and spotting drift between DEV/QA/PRD. " +
-      "Use update_application_configurations to modify a value.",
+      "Returns the per-environment deployment configuration of an application: for every " +
+      "environment, its environmentKey, isBlocked (true = the application cannot be deployed " +
+      "to that environment) and isBlockedChangeReason. " +
+      "Note: the LifeTime API does not expose site properties, timer schedules or REST " +
+      "endpoint settings — only this deployment-blocking flag. " +
+      "Use update_application_configurations to change it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -29,11 +31,10 @@ export const configurationsTools: Tool[] = [
   {
     name: "update_application_configurations",
     description:
-      "Updates configuration values (site properties, timer schedules, etc.) for an application " +
-      "in a SPECIFIC environment. Workflow: " +
-      "(1) call get_application_configurations to discover Keys and current Values, " +
-      "(2) call update_application_configurations with the items to change. " +
-      "Only the items you list are modified; everything else stays untouched.",
+      "Blocks or unblocks deployments of an application to a SPECIFIC environment by setting " +
+      "its isBlocked flag (with an optional reason). This is the only attribute the LifeTime " +
+      "API allows changing here — site properties and timers are not exposed. " +
+      "Call get_application_configurations first to see the current state.",
     inputSchema: {
       type: "object",
       properties: {
@@ -43,31 +44,19 @@ export const configurationsTools: Tool[] = [
         },
         EnvironmentKey: {
           type: "string",
-          description:
-            "Key of the environment in which the configuration values should be applied.",
+          description: "Key of the environment whose configuration should be updated.",
         },
-        Configurations: {
-          type: "array",
-          minItems: 1,
-          description: "Configuration items to update.",
-          items: {
-            type: "object",
-            properties: {
-              Key: {
-                type: "string",
-                description:
-                  "Configuration item key from get_application_configurations.",
-              },
-              Value: {
-                type: "string",
-                description: "New value to set.",
-              },
-            },
-            required: ["Key", "Value"],
-          },
+        IsBlocked: {
+          type: "boolean",
+          description:
+            "true to block deployments of the application to this environment, false to allow them.",
+        },
+        IsBlockedChangeReason: {
+          type: "string",
+          description: "Optional reason for the change (recorded by LifeTime).",
         },
       },
-      required: ["ApplicationKey", "EnvironmentKey", "Configurations"],
+      required: ["ApplicationKey", "EnvironmentKey", "IsBlocked"],
     },
   },
   {
@@ -137,26 +126,25 @@ export function configurationsHandlers(
     },
 
     update_application_configurations: async (args) => {
-      const { ApplicationKey, EnvironmentKey, Configurations } =
+      const { ApplicationKey, EnvironmentKey, IsBlocked, IsBlockedChangeReason } =
         UpdateApplicationConfigurationsSchema.parse(args);
       return runTool(async () => {
-        // The LifeTime API expects an array of environment-scoped config blocks
-        const payload = [
-          {
-            EnvironmentKey,
-            Configurations: Configurations.map((c) => ({
-              Key: c.Key,
-              Value: c.Value,
-            })),
-          },
-        ];
+        // Matches the ApplicationConfigurations definition in the API spec
+        const payload = {
+          configurations: [
+            {
+              environmentKey: EnvironmentKey,
+              isBlocked: IsBlocked,
+              isBlockedChangeReason: IsBlockedChangeReason,
+            },
+          ],
+        };
         await api.put(
           `/applications/${ApplicationKey}/configurations/`,
           payload
         );
         return {
-          message: `Configurations updated for application ${ApplicationKey} in environment ${EnvironmentKey}.`,
-          updatedCount: Configurations.length,
+          message: `Application ${ApplicationKey} is now ${IsBlocked ? "blocked" : "unblocked"} for deployments to environment ${EnvironmentKey}.`,
         };
       });
     },

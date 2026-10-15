@@ -605,26 +605,20 @@ export const GetApplicationConfigurationsSchema = z.object({
   ApplicationKey: KeySchema.describe("Unique key of the application."),
 });
 
-export const ApplicationConfigurationItemSchema = z.object({
-  Key: z
-    .string()
-    .min(1)
-    .describe(
-      "Configuration item key (e.g. a site property or timer key). " +
-        "Obtain it from get_application_configurations."
-    ),
-  Value: z.string().describe("New value to set for this configuration item."),
-});
-
 export const UpdateApplicationConfigurationsSchema = z.object({
   ApplicationKey: KeySchema.describe("Unique key of the application."),
   EnvironmentKey: KeySchema.describe(
-    "Key of the environment whose configurations should be updated."
+    "Key of the environment whose configuration should be updated."
   ),
-  Configurations: z
-    .array(ApplicationConfigurationItemSchema)
-    .min(1)
-    .describe("Configuration items to update in the target environment."),
+  IsBlocked: z
+    .boolean()
+    .describe(
+      "When true, the application cannot be deployed to this environment."
+    ),
+  IsBlockedChangeReason: z
+    .string()
+    .default("")
+    .describe("Reason for changing the IsBlocked attribute."),
 });
 
 export const MobileVersionSchema = z.object({

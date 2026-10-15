@@ -159,6 +159,20 @@ For example, a 403 response surfaces as:
 
 This lets Claude explain exactly why an operation failed and suggest corrective actions.
 
+### Large deployment plans take a while to validate
+
+After `create_deployment`, LifeTime validates the plan in a background job. For a
+handful of applications this is near-instant, but for large plans (dozens of apps)
+it can take **tens of minutes**. While validation runs:
+
+- `get_deployment` fails with `Invalid status change: trying to change Staging ... from 'Validating' to 'Calculating apps to redeploy'`.
+- `execute_deployment_command` with `start` fails with `Command 'start' can't be executed for deployment '<key>'` (or a bare 500).
+- `get_deployment_status` is safe to poll — it reports `saved`.
+
+The plan is not broken: don't discard and recreate it. Poll `get_deployment_status`
+and retry `start` once validation finishes. The server appends a hint to the first
+two errors pointing this out.
+
 ---
 
 ## Environment variables
