@@ -10,6 +10,46 @@ import {
   DeleteDeploymentSchema,
 } from "../schemas.js";
 import { MCPToolResult, runTool } from "../tool-helpers.js";
+import { LifeTimeAPIError } from "../api-client.js";
+
+/**
+ * After create_deployment, LifeTime validates the plan in a background job.
+ * For large plans (dozens of apps) that job can take tens of minutes, and
+ * calling get_deployment or start while it runs fails with confusing errors.
+ */
+export const VALIDATION_HINT =
+  "Hint: this deployment plan is most likely still being validated by LifeTime " +
+  "(a background job that can take tens of minutes for plans with many applications). " +
+  "The plan is not corrupted — do not discard or recreate it. Poll get_deployment_status " +
+  "(it reports 'saved' while validation runs) and retry once validation has finished.";
+
+/**
+ * Returns `errors` with VALIDATION_HINT appended when they indicate the plan
+ * is still validating; otherwise returns `errors` unchanged (same reference).
+ */
+export function addValidationHint(errors: string[], command?: string): string[] {
+  const stillValidating = errors.some(
+    (e) =>
+      /from 'Validating'/i.test(e) ||
+      (command === "start" && /Command 'start' can't be executed/i.test(e))
+  );
+  return stillValidating ? [...errors, VALIDATION_HINT] : errors;
+}
+
+async function explainValidating<T>(
+  fn: () => Promise<T>,
+  command?: string
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof LifeTimeAPIError) {
+      const errors = addValidationHint(err.errors, command);
+      if (errors !== err.errors) throw new LifeTimeAPIError(errors, err.statusCode);
+    }
+    throw err;
+  }
+}
 
 export const deploymentsTools: Tool[] = [
   {
@@ -49,8 +89,14 @@ export const deploymentsTools: Tool[] = [
       "  1. Call get_environments to find SourceEnvironmentKey and TargetEnvironmentKey.\n" +
       "  2. Call get_applications (IncludeEnvStatus=true) to find ApplicationVersionKeys.\n" +
       "  3. Call create_deployment with those keys.\n" +
-      "  4. Call execute_deployment_command with command='start' to begin the deployment.\n" +
-      "  5. Poll get_deployment_status until DeploymentStatus is a terminal state.",
+      "  4. Wait for LifeTime to validate the plan (see below).\n" +
+      "  5. Call execute_deployment_command with command='start' to begin the deployment.\n" +
+      "  6. Poll get_deployment_status until DeploymentStatus is a terminal state.\n" +
+      "Validation: LifeTime validates a new plan in a background job. For a few apps it is " +
+      "near-instant, but for large plans (dozens of apps) it can take tens of minutes. While it " +
+      "runs, get_deployment and 'start' fail (e.g. \"Invalid status change ... from 'Validating'\" " +
+      "or \"Command 'start' can't be executed\"). Only get_deployment_status is safe to poll " +
+      "meanwhile (it reports 'saved'). Do not discard/recreate the plan — it is not broken.",
     inputSchema: {
       type: "object",
       properties: {
@@ -100,10 +146,13 @@ export const deploymentsTools: Tool[] = [
     name: "execute_deployment_command",
     description:
       "Executes a lifecycle command on an existing deployment plan:\n" +
-      '  • "start"    — Begins the deployment (plan must be in saved/valid state).\n' +
+      '  • "start"    — Begins the deployment (plan must be saved AND have finished validating).\n' +
       '  • "continue" — Resumes a deployment paused for user intervention (e.g. two-step deploy).\n' +
       '  • "abort"    — Cancels the deployment before it finishes deploying to the platform server.\n' +
-      "After calling start or continue, poll get_deployment_status to monitor progress.",
+      "After calling start or continue, poll get_deployment_status to monitor progress.\n" +
+      "If 'start' fails with \"Command 'start' can't be executed\" (or a bare 500) shortly after " +
+      "create_deployment on a large plan, LifeTime is most likely still validating it — wait " +
+      "(polling get_deployment_status, not this command) and retry; do not recreate the plan.",
     inputSchema: {
       type: "object",
       properties: {
@@ -137,11 +186,13 @@ export const deploymentsTools: Tool[] = [
       "Returns DeploymentStatus, Info (e.g. action needed for two-step deployments), " +
       "and a timestamped DeploymentLog with Info/Warning/Error messages.\n\n" +
       "Key status values:\n" +
+      "  • saved                 — plan created but not started (also reported while LifeTime is still validating a new plan)\n" +
       "  • running               — deployment is in progress\n" +
       "  • needs_user_intervention — paused; call execute_deployment_command with 'continue'\n" +
       "  • finished_successful   — deployment completed without issues\n" +
       "  • finished_with_warnings / finished_with_errors — completed with issues\n" +
-      "  • aborted               — deployment was aborted",
+      "  • aborted               — deployment was aborted\n" +
+      "This is the only deployment call that is safe to poll while a freshly created plan is still being validated.",
     inputSchema: {
       type: "object",
       properties: {
@@ -158,7 +209,9 @@ export const deploymentsTools: Tool[] = [
     description:
       "Returns the full details of a deployment plan: source/target environments, notes, " +
       "creator, lifecycle timestamps, and the list of ApplicationOperations. " +
-      "Unlike get_deployment_status, this does not include live execution logs.",
+      "Unlike get_deployment_status, this does not include live execution logs. " +
+      "Fails with \"Invalid status change ... from 'Validating'\" while LifeTime is still validating " +
+      "a freshly created plan (can take tens of minutes for large plans) — poll get_deployment_status instead until then.",
     inputSchema: {
       type: "object",
       properties: {
@@ -262,7 +315,9 @@ export function deploymentsHandlers(
         return {
           DeploymentKey: data,
           message:
-            "Deployment plan created. Call execute_deployment_command with command='start' to begin.",
+            "Deployment plan created. LifeTime now validates it in the background (can take tens of " +
+            "minutes for plans with many applications). Poll get_deployment_status until validation " +
+            "finishes, then call execute_deployment_command with command='start'.",
         };
       });
     },
@@ -278,9 +333,13 @@ export function deploymentsHandlers(
         if (IncludeErrorDetails !== undefined)
           params.IncludeErrorDetails = IncludeErrorDetails;
 
-        await api.post(`/deployments/${DeploymentKey}/${Command}/`, null, {
-          params,
-        });
+        await explainValidating(
+          () =>
+            api.post(`/deployments/${DeploymentKey}/${Command}/`, null, {
+              params,
+            }),
+          Command
+        );
         return {
           message: `Command '${Command}' accepted for deployment ${DeploymentKey}. Use get_deployment_status to monitor progress.`,
         };
@@ -298,7 +357,9 @@ export function deploymentsHandlers(
     get_deployment: async (args) => {
       const { DeploymentKey } = GetDeploymentSchema.parse(args);
       return runTool(async () => {
-        const { data } = await api.get(`/deployments/${DeploymentKey}/`);
+        const { data } = await explainValidating(() =>
+          api.get(`/deployments/${DeploymentKey}/`)
+        );
         return data;
       });
     },
