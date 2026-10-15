@@ -72,7 +72,7 @@ function createMcpServer(): Server {
   const server = new Server(
     {
       name: "outsystems-lifetime-mcp",
-      version: "1.0.0",
+      version: "1.1.0",
     },
     {
       capabilities: {
